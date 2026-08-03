@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnalyzedComment",
+  "type": "object",
+  "properties": {
+    "comment": { "type": "string", "description": "Raw comment text" },
+    "author": { "type": "string", "description": "Who posted the comment (handle/username)" },
+    "platform": { "type": "string", "enum": ["youtube", "instagram", "bluesky"] },
+    "like_count": { "type": "integer", "minimum": 0 },
+    "published_at": { "type": "string", "format": "date-time" },
+
+    "sentiment": { "type": "string", "enum": ["Positive", "Neutral", "Negative"] },
+    "sentiment_score": { "type": "number", "minimum": -1, "maximum": 1 },
+
+    "emotions": { "type": "string", "description": "Comma-separated emotion labels" },
+    "primary_emotion": {
+      "type": "string",
+      "enum": ["anger", "frustration", "joy", "fear", "sarcasm_risk", "urgency", "none"]
+    },
+
+    "is_spam": { "type": "boolean" },
+    "spam_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "is_toxic": { "type": "boolean" },
+    "toxicity_score": { "type": "number", "minimum": 0, "maximum": 1 },
+
+    "intent": {
+      "type": "string",
+      "enum": [
+        "complaint", "support_request", "feature_request", "purchase_intent",
+        "refund_risk", "misinformation_risk", "praise", "general_discussion", "spam"
+      ]
+    },
+    "intent_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+
+    "priority": { "type": "string", "enum": ["Low", "Medium", "High", "Critical"] },
+    "priority_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+
+    "key_phrases": { "type": "string", "description": "Semicolon-separated phrases that drove the classification" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "model_version": { "type": "string" },
+    "reason_summary": { "type": "string", "description": "Human-readable explanation of the classification" }
+  },
+  "required": ["comment", "author", "sentiment", "intent", "priority", "reason_summary"]
+}

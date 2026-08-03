@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+fresh_venv/
+data/comments_*.csv
+data/metadata_*.json
+data/alerts_log.json
+.streamlit/secrets.toml
+*.session
