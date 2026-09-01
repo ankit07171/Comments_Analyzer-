@@ -9,3 +9,4 @@ data/metadata_*.json
 data/alerts_log.json
 .streamlit/secrets.toml
 *.session
+models/models/multitask_bert/multitask_model.pt

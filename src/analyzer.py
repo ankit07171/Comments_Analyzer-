@@ -47,6 +47,57 @@ class MultiTaskClassifier:
         return _Model()
 
 
+def _download_model_if_needed():
+    """
+    Downloads model files from GitHub if they don't exist locally.
+    Use this for deployment environments like Render where you don't commit large model files.
+    """
+    import requests
+    import zipfile
+    import io
+    
+    # GitHub Releases URL pattern - replace with your actual release URL
+    # Format: https://github.com/OWNER/REPO/releases/download/TAG/filename
+    GITHUB_RELEASE_URLS = {
+        "multitask_model.pt": "https://github.com/your-username/your-repo/releases/download/v1.0/multitask_model.pt",
+        "tokenizer.tar.gz": "https://github.com/your-username/your-repo/releases/download/v1.0/tokenizer.tar.gz",
+    }
+    
+    for filename, url in GITHUB_RELEASE_URLS.items():
+        if filename.endswith(".pt"):
+            target_path = os.path.join(_MODEL_DIR, filename)
+        elif filename.endswith(".tar.gz"):
+            target_path = os.path.join(_MODEL_DIR, "tokenizer")
+        else:
+            continue
+            
+        if os.path.exists(target_path):
+            continue
+            
+        print(f"⏳ Model file not found, downloading {filename}...")
+        try:
+            os.makedirs(_MODEL_DIR, exist_ok=True)
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            
+            if filename.endswith(".tar.gz"):
+                # Extract tokenizer archive
+                with io.BytesIO(resp.content) as zip_buffer:
+                    with zipfile.ZipFile(zip_buffer) as zip_file:
+                        zip_file.extractall(_MODEL_DIR)
+                print(f"✅ Tokenizer downloaded and extracted")
+            else:
+                with open(target_path, "wb") as f:
+                    f.write(resp.content)
+                print(f"✅ Model downloaded to {target_path}")
+                
+        except Exception as e:
+            print(f"⚠️ Failed to download {filename}: {e}")
+            return False
+    
+    return True
+
+
 def load_trained_models():
      
     global _multitask_model, _multitask_tokenizer
@@ -56,6 +107,11 @@ def load_trained_models():
     if _MODEL_LOAD_ATTEMPTED:
         return
     _MODEL_LOAD_ATTEMPTED = True
+
+    # Try to download model if running in deployment (Render, etc.)
+    # Comment this out if you prefer to commit models or use a different download method
+    if os.environ.get("RENDER", "").lower() == "true" or os.environ.get("ENV", "") == "production":
+        _download_model_if_needed()
 
     weights_path = os.path.join(_MODEL_DIR, "multitask_model.pt")
     tokenizer_path = os.path.join(_MODEL_DIR, "tokenizer")
