@@ -10,3 +10,8 @@ data/alerts_log.json
 .streamlit/secrets.toml
 *.session
 models/models/multitask_bert/multitask_model.pt
+
+# Model files (too large for GitHub - download at runtime)
+models/models/multitask_bert/tokenizer/
+*.pt
+*.pth
