@@ -82,7 +82,7 @@ def _load_analyzed_df_cached(df_raw: pd.DataFrame, csv_path: str, platform: str)
     or after an app restart) is instant instead of re-running BERT over
     every comment again."""
     from src import analyzer as _analyzer
-    _analyzer.load_trained_models()  # ensure MODEL_VERSION reflects what will actually run
+    _analyzer.load_ml_models()  # ensure MODEL_VERSION reflects what will actually run
 
     cache_key = _dataset_cache_key(csv_path, f"{_analyzer.MODEL_VERSION}::{_analyzer.RULES_VERSION}")
 
@@ -349,8 +349,7 @@ if st.session_state.df is not None:
         )
         from src import analyzer
         if analyzer._MODEL_LOAD_ATTEMPTED:
-            model_info = ("Custom fine-tuned multi-task BERT (sentiment + 11-class intent)"
-                           if analyzer.USING_TRAINED_MODEL else "VADER + keyword lexicon (fallback — trained model unavailable)")
+            model_info = "Multilingual XLM-RoBERTa sentiment model" if analyzer.USING_ML_MODEL else "VADER (English) + rule-based"
             st.caption(f"Model: `{analyzer.MODEL_VERSION}` ({model_info}) — every classification below cites the exact phrases that drove it.")
         else:
             st.caption("Model: Loading... — every classification below cites the exact phrases that drove it.")

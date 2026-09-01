@@ -1,69 +1,36 @@
-# # ------------------------------------------------------------------
-# # Comment Intelligence Platform — dependencies
-# # ------------------------------------------------------------------
-
-# # App / UI
-# streamlit>=1.36
-# python-dotenv>=1.0
-
-# # Data
-# pandas>=2.2
-# numpy>=1.26
-
-# # NLP / classification (lightweight, no external model downloads)
-# vaderSentiment>=3.3.2
-# textblob>=0.18
-# scikit-learn>=1.4
-
-# # Advanced sentiment analysis (RoBERTa multilingual)
-# transformers>=4.35.0
-# torch>=2.0.0
-# sentencepiece>=0.1.99
-
-# # Ingestion
-# requests>=2.31
-# apify-client>=1.7          # Instagram comment scraping
-# atproto>=0.0.55            # Bluesky (AT Protocol) comment/reply ingestion
-
-# # Integrations (only the ones this project actually uses)
-# # - Jira Cloud REST API  -> requests (already listed above)
-# # - Upstash Redis REST   -> requests (already listed above)
-
-# # Optional AI summary / deep explanations (Gemini) — used only if
-# # GEMINI_API_KEY is set; app degrades gracefully without it.
 # ------------------------------------------------------------------
 # Comment Intelligence Platform — dependencies
+# Lightweight multilingual version
 # ------------------------------------------------------------------
 
-# App / UI
+# Core application
 streamlit>=1.36
 python-dotenv>=1.0
 
-# Data
+# Data handling
 pandas>=2.2
 numpy>=1.26
 
-# NLP / classification
-vaderSentiment>=3.3.2   # fallback sentiment engine if the trained model is unavailable
-textblob>=0.18
-scikit-learn>=1.4       # used by models/train_intent_model.py (class weights, metrics)
-
-# Custom trained multi-task model (models/models/multitask_bert/) — shared
-# bert-base-uncased encoder with a sentiment head and an 11-class intent head.
-# Required for src/analyzer.py to use the trained model instead of the
-# VADER + keyword-lexicon fallback.
+# NLP - Lightweight multilingual models
 transformers>=4.35.0
 torch>=2.0.0
-sentencepiece>=0.1.99
 
-# Ingestion
+# For multilingual sentiment analysis
+# cardiffnlp/twitter-xlm-roberta-base-sentiment
+# This is a pre-trained model that will be downloaded automatically
+# No need for fine-tuning or custom model files
+
+# Optional: Language detection (fastText)
+# Uncomment if you want better language detection
+fasttext>=0.9.2
+
+# VADER as fallback for English
+vaderSentiment>=3.3.2
+
+# Ingestion APIs
 requests>=2.31
 apify-client>=1.7          # Instagram comment scraping
 atproto>=0.0.55            # Bluesky (AT Protocol) comment/reply ingestion
 
-# Integrations (only the ones this project actually uses)
-# - Jira Cloud REST API  -> requests (already listed above)
-# - Upstash Redis REST   -> requests (already listed above)
-
-# Optional AI summary / deep explanations (Gemini) — used only if
-# GEMINI_API_KEY is set; app degrades gracefully without it.
+# Optional AI explanations (Gemini API)
+# Only needed if GEMINI_API_KEY is set

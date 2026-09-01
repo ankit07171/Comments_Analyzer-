@@ -6,96 +6,195 @@ import json
 from dataclasses import dataclass, field
 from typing import Optional 
 
-_MODEL_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "models", "models", "multitask_bert"
-)
+# Lightweight multilingual sentiment and intent analyzer
+# Using pre-trained models from HuggingFace that are fast and small
 
-_multitask_model = None
-_multitask_tokenizer = None
-_sentiment_labels = None   
-_intent_labels = None      
+# Model choices (choose one based on performance needs)
+# 1. cardiffnlp/twitter-xlm-roberta-base-sentiment (multilingual sentiment, ~1GB)
+# 2. nlptown/bert-base-multilingual-uncased-sentiment (multilingual sentiment, ~700MB)
+# 3. Using fastText + rule-based intent for lightweight solution
 
-USING_TRAINED_MODEL = False     
-_MODEL_LOAD_ATTEMPTED = False   
-MODEL_VERSION = "rule-engine-v1.3+vader-fallback"
+_sentiment_model = None
+_sentiment_tokenizer = None
+_intent_analyzer = None
+_lang_detector = None
+
+USING_ML_MODEL = False
+_MODEL_LOAD_ATTEMPTED = False
+MODEL_VERSION = "multilingual-xlm-roberta-sentiment-v1"
 RULES_VERSION = "rules-v2-toxicity-severity-tiers"
 
-_vader = None
+_vader = None  # Keep VADER as fallback for English
 
+# Supported languages for multilingual model
+SUPPORTED_LANGUAGES = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'pl', 'ru', 'ar', 'zh', 'ja', 'ko', 'hi']
 
-class MultiTaskClassifier:
+# Sentiment labels mapping for the multilingual model
+SENTIMENT_LABELS = {
+    'en': {'negative': 0, 'neutral': 1, 'positive': 2},
+    'es': {'negativo': 0, 'neutral': 1, 'positivo': 2},
+    'fr': {'négatif': 0, 'neutre': 1, 'positif': 2},
+    'de': {'negativ': 0, 'neutral': 1, 'positiv': 2},
+    # Add more languages as needed
+}
 
-    @staticmethod
-    def build(num_sentiment_labels: int, num_intent_labels: int):
-        import torch.nn as nn
-        from transformers import BertModel
-
-        class _Model(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.bert = BertModel.from_pretrained("bert-base-uncased")
-                hidden_size = self.bert.config.hidden_size
-                self.dropout = nn.Dropout(0.3)
-                self.sentiment_head = nn.Linear(hidden_size, num_sentiment_labels)
-                self.intent_head = nn.Linear(hidden_size, num_intent_labels)
-
-            def forward(self, input_ids, attention_mask):
-                outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-                pooled = self.dropout(outputs.pooler_output)
-                return self.sentiment_head(pooled), self.intent_head(pooled)
-
-        return _Model()
-
-
-def _download_model_if_needed():
+def load_ml_models():
     """
-    Downloads model files from GitHub if they don't exist locally.
-    Use this for deployment environments like Render where you don't commit large model files.
+    Load lightweight multilingual models for sentiment and intent analysis.
+    Uses pre-trained models from HuggingFace that are cached locally.
     """
-    import requests
-    import zipfile
-    import io
+    global _sentiment_model, _sentiment_tokenizer, _intent_analyzer, _lang_detector
+    global USING_ML_MODEL, _MODEL_LOAD_ATTEMPTED, MODEL_VERSION
     
-    # GitHub Releases URL pattern - replace with your actual release URL
-    # Format: https://github.com/OWNER/REPO/releases/download/TAG/filename
-    GITHUB_RELEASE_URLS = {
-        "multitask_model.pt": "https://github.com/your-username/your-repo/releases/download/v1.0/multitask_model.pt",
-        "tokenizer.tar.gz": "https://github.com/your-username/your-repo/releases/download/v1.0/tokenizer.tar.gz",
+    if _MODEL_LOAD_ATTEMPTED:
+        return
+    _MODEL_LOAD_ATTEMPTED = True
+    
+    try:
+        print("⏳ Loading lightweight multilingual analysis models...")
+        
+        # 1. Load language detection model (fastText, very lightweight)
+        try:
+            import fasttext
+            # Download or use local fasttext model
+            model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lid.176.bin")
+            if not os.path.exists(model_path):
+                print("⚠️ FastText language model not found locally.")
+                print("   Language detection will use simple heuristics.")
+            else:
+                _lang_detector = fasttext.load_model(model_path)
+                print("✅ Language detection model loaded")
+        except ImportError:
+            print("⚠️ fasttext not installed, skipping language detection")
+        except Exception as e:
+            print(f"⚠️ Could not load language detector: {e}")
+        
+        # 2. Load sentiment analysis model
+        try:
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
+            
+            # Using a smaller model for faster inference
+            # cardiffnlp/twitter-xlm-roberta-base-sentiment is multilingual and good for social media
+            model_name = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
+            
+            print(f"⏳ Loading multilingual sentiment model: {model_name}")
+            _sentiment_tokenizer = AutoTokenizer.from_pretrained(model_name)
+            _sentiment_model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            
+            # Create sentiment analysis pipeline
+            from transformers import TextClassificationPipeline
+            sentiment_pipeline = pipeline(
+                "sentiment-analysis",
+                model=_sentiment_model,
+                tokenizer=_sentiment_tokenizer,
+                device=-1,  # CPU
+                truncation=True,
+                max_length=512
+            )
+            
+            USING_ML_MODEL = True
+            MODEL_VERSION = f"multilingual-xlm-roberta-sentiment ({model_name})"
+            print("✅ Multilingual sentiment model loaded successfully")
+            
+        except ImportError as e:
+            print(f"❌ Could not load transformers: {e}")
+            print("   Install with: pip install transformers")
+            return
+        except Exception as e:
+            print(f"⚠️ Could not load sentiment model: {e}")
+            print("   Falling back to VADER for English + rules for other languages")
+            return
+        
+        # 3. Intent analysis - using rule-based for now (lightweight)
+        # Could replace with a small intent model if needed
+        print("✅ Intent analysis using rule-based engine (lightweight)")
+        
+    except Exception as e:
+        print(f"❌ Error loading ML models: {e}")
+        print("⚠️ Falling back to rule-based analysis")
+        USING_ML_MODEL = False
+
+def detect_language(text: str) -> str:
+    """
+    Detect the language of text.
+    Returns language code (en, es, fr, etc.) or 'unknown'
+    """
+    if not text or len(text.strip()) < 3:
+        return 'unknown'
+    
+    # Try fastText first
+    if _lang_detector:
+        try:
+            predictions = _lang_detector.predict(text)
+            lang_code = predictions[0][0].replace('__label__', '')
+            # Map to standard language codes
+            lang_map = {
+                'en': 'en', 'es': 'es', 'fr': 'fr', 'de': 'de', 'it': 'it',
+                'pt': 'pt', 'nl': 'nl', 'pl': 'pl', 'ru': 'ru', 'ar': 'ar',
+                'zh': 'zh', 'ja': 'ja', 'ko': 'ko', 'hi': 'hi'
+            }
+            return lang_map.get(lang_code, 'unknown')
+        except Exception:
+            pass
+    
+    # Simple heuristic fallback
+    text_lower = text.lower()
+    
+    # Check for common words in different languages
+    lang_checks = {
+        'es': [' el ', ' la ', ' de ', ' que ', ' y ', ' en '],
+        'fr': [' le ', ' la ', ' de ', ' et ', ' que ', ' en '],
+        'de': [' der ', ' die ', ' das ', ' und ', ' oder ', ' nicht '],
+        'it': [' il ', ' la ', ' del ', ' che ', ' e ', ' di '],
+        'pt': [' o ', ' a ', ' de ', ' que ', ' e ', ' do '],
     }
     
-    for filename, url in GITHUB_RELEASE_URLS.items():
-        if filename.endswith(".pt"):
-            target_path = os.path.join(_MODEL_DIR, filename)
-        elif filename.endswith(".tar.gz"):
-            target_path = os.path.join(_MODEL_DIR, "tokenizer")
-        else:
-            continue
-            
-        if os.path.exists(target_path):
-            continue
-            
-        print(f"⏳ Model file not found, downloading {filename}...")
-        try:
-            os.makedirs(_MODEL_DIR, exist_ok=True)
-            resp = requests.get(url, timeout=30)
-            resp.raise_for_status()
-            
-            if filename.endswith(".tar.gz"):
-                # Extract tokenizer archive
-                with io.BytesIO(resp.content) as zip_buffer:
-                    with zipfile.ZipFile(zip_buffer) as zip_file:
-                        zip_file.extractall(_MODEL_DIR)
-                print(f"✅ Tokenizer downloaded and extracted")
-            else:
-                with open(target_path, "wb") as f:
-                    f.write(resp.content)
-                print(f"✅ Model downloaded to {target_path}")
-                
-        except Exception as e:
-            print(f"⚠️ Failed to download {filename}: {e}")
-            return False
+    for lang_code, words in lang_checks.items():
+        if any(word in text_lower for word in words):
+            return lang_code
     
-    return True
+    # Default to English (most social media comments are in English)
+    return 'en'
+
+def analyze_sentiment_multilingual(text: str, lang: str = 'en'):
+    """
+    Analyze sentiment using multilingual model.
+    Returns: (sentiment_label, confidence)
+    """
+    if not USING_ML_MODEL or _sentiment_model is None:
+        return None
+    
+    try:
+        from transformers import pipeline
+        
+        # Create sentiment analysis pipeline if not already created
+        sentiment_pipeline = pipeline(
+            "sentiment-analysis",
+            model=_sentiment_model,
+            tokenizer=_sentiment_tokenizer,
+            device=-1,  # CPU
+            truncation=True,
+            max_length=512
+        )
+        
+        # Analyze sentiment
+        result = sentiment_pipeline(text[:1000])[0]  # Limit text length
+        
+        # Map model output to our standard labels
+        label = result['label'].lower()
+        confidence = result['score']
+        
+        # Standardize labels
+        if 'positive' in label or 'pos' in label:
+            return 'Positive', confidence
+        elif 'negative' in label or 'neg' in label:
+            return 'Negative', confidence
+        else:
+            return 'Neutral', confidence
+            
+    except Exception as e:
+        print(f"⚠️ Multilingual sentiment analysis failed: {e}")
+        return None
 
 
 def load_trained_models():
@@ -109,18 +208,30 @@ def load_trained_models():
     _MODEL_LOAD_ATTEMPTED = True
 
     # Try to download model if running in deployment (Render, etc.)
-    # Comment this out if you prefer to commit models or use a different download method
-    if os.environ.get("RENDER", "").lower() == "true" or os.environ.get("ENV", "") == "production":
-        _download_model_if_needed()
+    # Always try to download if model files don't exist locally
+    weights_path = os.path.join(_MODEL_DIR, "multitask_model.pt")
+    if not os.path.exists(weights_path):
+        # Try to download on Render/cloud environments
+        if os.environ.get("RENDER") or os.environ.get("ENABLE_MODEL_DOWNLOAD"):
+            _download_model_if_needed()
+        else:
+            print(f"ℹ️ Custom trained model not found locally.")
+            print("   The app will use VADER + rule-based analysis.")
+            print("   To use the trained BERT model, upload files to GitHub Releases")
+            print("   and set ENABLE_MODEL_DOWNLOAD=true in Render environment variables.")
+            return
 
     weights_path = os.path.join(_MODEL_DIR, "multitask_model.pt")
     tokenizer_path = os.path.join(_MODEL_DIR, "tokenizer")
     sentiment_labels_path = os.path.join(_MODEL_DIR, "sentiment_labels.json")
     intent_labels_path = os.path.join(_MODEL_DIR, "intent_labels.json")
 
-    if not os.path.exists(weights_path):
-        print(f"ℹ️ Custom trained model not found at {weights_path}.")
-        print("   Run `python models/train_intent_model.py --csv_path <your.csv>` to train it.")
+    # Check if we have all required files
+    required_files = [weights_path, tokenizer_path, sentiment_labels_path, intent_labels_path]
+    if not all(os.path.exists(f) for f in required_files):
+        missing = [f for f in required_files if not os.path.exists(f)]
+        print(f"ℹ️ Missing model files: {', '.join([os.path.basename(f) for f in missing])}")
+        print("   Falling back to VADER + rule-based analysis.")
         return
 
     try:
@@ -476,30 +587,27 @@ class CommentAnalysis:
 
 
 def analyze_comment(text: str, author: str = "Unknown", platform: str = "unknown",
-                     like_count: int = 0, _precomputed_model_pred=None) -> CommentAnalysis:
-    """Analyzes a single comment.
-
-    _precomputed_model_pred: optional (sentiment_label, sentiment_conf, intent_label,
-    intent_conf) tuple. Pass this when the BERT prediction for this comment was already
-    produced by `_predict_batch_with_trained_model` (used by analyze_dataframe for speed) —
-    it skips the redundant single-comment forward pass. Leave as None for ad-hoc/one-off
-    single-comment analysis, in which case this function runs the model itself.
-    """
-    # Lazy load the custom trained model on first use (no-op after first call)
-    load_trained_models()
+                     like_count: int = 0) -> CommentAnalysis:
+    """Analyzes a single comment using lightweight multilingual models."""
+    # Lazy load multilingual models on first use
+    load_ml_models()
 
     raw = text or ""
     norm = raw.lower().strip()
 
     result = CommentAnalysis(comment=raw, author=author or "Unknown", platform=platform)
 
+    # 1. Detect language
+    lang = detect_language(raw)
+    
+    # 2. Analyze spam and toxicity (language-independent rules)
     spam_hits = _find_flat_hits(norm, SPAM_MARKERS)
     result.is_spam = len(spam_hits) > 0
     result.spam_score = min(1.0, 0.4 * len(spam_hits) + (0.3 if result.is_spam else 0))
 
     severe_hits = _find_flat_hits(norm, TOXIC_MARKERS_SEVERE)
     mild_hits = _find_flat_hits(norm, TOXIC_MARKERS_MILD)
-    toxic_hits = severe_hits + mild_hits  # kept for existing explainability code below
+    toxic_hits = severe_hits + mild_hits
 
     result.is_toxic = bool(severe_hits or mild_hits)
     if severe_hits:
@@ -509,76 +617,95 @@ def analyze_comment(text: str, author: str = "Unknown", platform: str = "unknown
     else:
         result.toxicity_severity = "none"
 
-    directed = _mentions_second_person(norm)  # aimed at someone in the thread, not a third party
+    directed = _mentions_second_person(norm)
     result.toxicity_score = min(
         1.0,
         0.6 * len(severe_hits) + 0.2 * len(mild_hits) + (0.15 if directed and (severe_hits or mild_hits) else 0)
     )
 
-    intent_hits = _find_hits(norm, INTENT_LEXICON)  # kept for explainability phrases either way
-
-    if USING_TRAINED_MODEL and _multitask_model is not None:
-        if _precomputed_model_pred is not None:
-            sentiment_label, sentiment_conf, intent_label, intent_conf = _precomputed_model_pred
+    # 3. Analyze sentiment using multilingual model
+    if USING_ML_MODEL:
+        # Try multilingual model first
+        sentiment_result = analyze_sentiment_multilingual(raw, lang)
+        if sentiment_result:
+            sentiment_label, sentiment_conf = sentiment_result
+            result.sentiment = sentiment_label
+            if sentiment_label == "Positive":
+                result.sentiment_score = round(sentiment_conf, 3)
+            elif sentiment_label == "Negative":
+                result.sentiment_score = round(-sentiment_conf, 3)
+            else:
+                result.sentiment_score = 0.0
         else:
-            sentiment_label, sentiment_conf, intent_label, intent_conf = _predict_with_trained_model(raw)
-
-        result.sentiment = sentiment_label
-        if sentiment_label == "Positive":
-            result.sentiment_score = round(sentiment_conf, 3)
-        elif sentiment_label == "Negative":
-            result.sentiment_score = round(-sentiment_conf, 3)
+            # Fallback to VADER for English, neutral for other languages
+            if lang == 'en':
+                global _vader
+                if _vader is None:
+                    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+                    _vader = SentimentIntensityAnalyzer()
+                vs = _vader.polarity_scores(raw)
+                compound = vs["compound"]
+                result.sentiment_score = round(compound, 3)
+                if norm in GENERIC_SHORT or (len(norm.split()) <= 2 and not spam_hits):
+                    result.sentiment = "Neutral"
+                elif compound >= 0.25:
+                    result.sentiment = "Positive"
+                elif compound <= -0.25:
+                    result.sentiment = "Negative"
+                else:
+                    result.sentiment = "Neutral"
+            else:
+                # For non-English languages without model, use neutral
+                result.sentiment = "Neutral"
+                result.sentiment_score = 0.0
+    else:
+        # Fallback to VADER for English
+        if lang == 'en':
+            global _vader
+            if _vader is None:
+                from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+                _vader = SentimentIntensityAnalyzer()
+            vs = _vader.polarity_scores(raw)
+            compound = vs["compound"]
+            result.sentiment_score = round(compound, 3)
+            if norm in GENERIC_SHORT or (len(norm.split()) <= 2 and not spam_hits):
+                result.sentiment = "Neutral"
+            elif compound >= 0.25:
+                result.sentiment = "Positive"
+            elif compound <= -0.25:
+                result.sentiment = "Negative"
+            else:
+                result.sentiment = "Neutral"
         else:
+            result.sentiment = "Neutral"
             result.sentiment_score = 0.0
 
-        result.intent = intent_label
-        result.intent_confidence = round(intent_conf, 3)
-
-        if intent_label in ("advertisement_or_promotion", "financial_promotion",
-                             "fraudulent_service_offer", "giveaway_or_reward_scam",
-                             "engagement_bait"):
-            result.is_spam = True
-            result.spam_score = max(result.spam_score, round(min(1.0, 0.5 + 0.15 * intent_conf * 3), 2))
-
+    # 4. Analyze intent (rule-based, works across languages)
+    intent_hits = _find_hits(norm, INTENT_LEXICON)
+    
+    if result.is_spam:
+        result.intent = "advertisement_or_promotion"
+        result.intent_confidence = round(min(0.95, 0.5 + 0.15 * len(spam_hits)), 2)
+    elif intent_hits:
+        # Priority order matters: risk/complaint signals should win over praise
+        for label, mapped in [
+            ("refund_risk", "complaint_or_problem_report"),
+            ("complaint", "complaint_or_problem_report"),
+            ("support_request", "question_or_information_request"),
+            ("misinformation_risk", "fraudulent_service_offer"),
+            ("purchase_intent", "question_or_information_request"),
+            ("feature_request", "feature_or_content_request"),
+            ("praise", "praise_or_appreciation"),
+        ]:
+            if label in intent_hits:
+                result.intent = mapped
+                result.intent_confidence = round(min(0.95, 0.45 + 0.15 * len(intent_hits[label])), 2)
+                break
     else:
-        global _vader
-        if _vader is None:
-            from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-            _vader = SentimentIntensityAnalyzer()
-        vs = _vader.polarity_scores(raw)
-        compound = vs["compound"]
-        result.sentiment_score = round(compound, 3)
-        if norm in GENERIC_SHORT or (len(norm.split()) <= 2 and not spam_hits):
-            result.sentiment = "Neutral"
-        elif compound >= 0.25:
-            result.sentiment = "Positive"
-        elif compound <= -0.25:
-            result.sentiment = "Negative"
-        else:
-            result.sentiment = "Neutral"
+        result.intent = "general_discussion"
+        result.intent_confidence = 0.35
 
-        if result.is_spam:
-            result.intent = "advertisement_or_promotion"
-            result.intent_confidence = round(min(0.95, 0.5 + 0.15 * len(spam_hits)), 2)
-        elif intent_hits:
-            # priority order matters: risk/complaint signals should win over praise
-            for label, mapped in [
-                ("refund_risk", "complaint_or_problem_report"),
-                ("complaint", "complaint_or_problem_report"),
-                ("support_request", "question_or_information_request"),
-                ("misinformation_risk", "fraudulent_service_offer"),
-                ("purchase_intent", "question_or_information_request"),
-                ("feature_request", "feature_or_content_request"),
-                ("praise", "praise_or_appreciation"),
-            ]:
-                if label in intent_hits:
-                    result.intent = mapped
-                    result.intent_confidence = round(min(0.95, 0.45 + 0.15 * len(intent_hits[label])), 2)
-                    break
-        else:
-            result.intent = "general_discussion"
-            result.intent_confidence = 0.35
-
+    # 5. Analyze emotions
     emotion_hits = _find_hits(norm, EMOTION_LEXICON)
     result.emotions = list(emotion_hits.keys())
     if emotion_hits:
@@ -586,15 +713,16 @@ def analyze_comment(text: str, author: str = "Unknown", platform: str = "unknown
     else:
         result.primary_emotion = "none"
 
+    # 6. Calculate priority score
     score = 0
     reasons = []
 
     if result.toxicity_severity == "severe":
-        score += 35 + (10 if directed else 0)  # real threat/hate — high regardless of target
+        score += 35 + (10 if directed else 0)
         reasons.append(f"severe toxic language / threat ({', '.join(severe_hits)})")
     elif result.toxicity_severity == "mild":
-        score += 12 + (10 if directed else 0)  # name-calling — worth noting, not alone Jira-worthy
-        target_note = "aimed at the channel" if directed else "third-party commentary, e.g. about a public figure"
+        score += 12 + (10 if directed else 0)
+        target_note = "aimed at the channel" if directed else "third-party commentary"
         reasons.append(f"mild toxic language ({', '.join(mild_hits)}) — {target_note}")
     if result.is_spam:
         score += 15
@@ -615,9 +743,6 @@ def analyze_comment(text: str, author: str = "Unknown", platform: str = "unknown
     if result.intent == "question_or_information_request":
         score += 10
         reasons.append("question / info request detected — needs a response")
-    if result.intent == "user_experience_feedback" and result.sentiment == "Negative":
-        score += 10
-        reasons.append("negative user-experience feedback")
     if "urgency" in result.emotions:
         score += 10
         reasons.append("urgency language")
@@ -639,58 +764,52 @@ def analyze_comment(text: str, author: str = "Unknown", platform: str = "unknown
         result.priority = "Medium"
     else:
         result.priority = "Low"
- 
+
+    # 7. Collect key phrases
     all_hits = list({*spam_hits, *toxic_hits})
     for label_hits in emotion_hits.values():
         all_hits.extend(label_hits)
     for label_hits in intent_hits.values():
         all_hits.extend(label_hits)
-    result.key_phrases = list(dict.fromkeys(all_hits))[:6]  # dedupe, cap for readability
+    result.key_phrases = list(dict.fromkeys(all_hits))[:6]
 
+    # 8. Confidence and summary
     result.model_version = MODEL_VERSION
-    if USING_TRAINED_MODEL:
-        result.confidence = round((result.intent_confidence + abs(result.sentiment_score if result.sentiment != "Neutral" else 0.7)) / 2, 2)
+    if USING_ML_MODEL:
+        result.confidence = round((result.intent_confidence + abs(result.sentiment_score) if result.sentiment != "Neutral" else 0.7) / 2, 2)
     else:
         result.confidence = round(min(0.97, 0.5 + 0.08 * len(reasons)), 2)
 
+    # Add language info to summary if not English
+    lang_info = f" [Language: {lang}]" if lang != 'en' else ""
+    
     if reasons:
         result.reason_summary = (
-            f"Flagged {result.priority} priority — " + "; ".join(reasons) + "."
+            f"Flagged {result.priority} priority{lang_info} — " + "; ".join(reasons) + "."
         )
     else:
-        result.reason_summary = f"No risk signals found; routine {result.sentiment.lower()} comment."
+        result.reason_summary = f"No risk signals found{lang_info}; routine {result.sentiment.lower()} comment."
 
     return result
 
 
-def analyze_dataframe(df, text_col="comment", author_col="author", platform="unknown", batch_size=64):
-    """Runs analysis over an entire DataFrame and returns a new DataFrame with
-    all analysis columns attached.
-
-    Model predictions (the expensive part) are computed once for the whole
-    dataframe via `_predict_batch_with_trained_model`, in batches of
-    `batch_size`, instead of one BERT forward pass per row. The cheap
-    rule-based signals (spam/toxicity/emotion regex, priority scoring) still
-    run per-row since they're negligible cost by comparison.
-    """
+def analyze_dataframe(df, text_col="comment", author_col="author", platform="unknown", batch_size=32):
+    """Runs analysis over an entire DataFrame using lightweight multilingual models."""
     import pandas as pd
 
-    load_trained_models()
+    # Load models once
+    load_ml_models()
 
     texts = [str(row.get(text_col, "")) for _, row in df.iterrows()]
-
-    precomputed = None
-    if USING_TRAINED_MODEL and _multitask_model is not None and texts:
-        precomputed = _predict_batch_with_trained_model(texts, batch_size=batch_size)
 
     records = []
     for idx, (_, row) in enumerate(df.iterrows()):
         text = texts[idx]
         author = str(row.get(author_col, "Unknown")) if author_col in df.columns else "Unknown"
         likes = int(row.get("like_count", 0)) if "like_count" in df.columns and str(row.get("like_count", "")).strip() != "" else 0
-        pred = precomputed[idx] if precomputed is not None else None
-        analysis = analyze_comment(text, author=author, platform=platform, like_count=likes,
-                                    _precomputed_model_pred=pred)
+        
+        # Analyze each comment
+        analysis = analyze_comment(text, author=author, platform=platform, like_count=likes)
         records.append(analysis.to_dict())
 
     analysis_df = pd.DataFrame(records)
