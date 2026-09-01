@@ -1,0 +1,12 @@
+,advertisement_or_promotion,complaint_or_problem_report,engagement_bait,feature_or_content_request,financial_promotion,fraudulent_service_offer,general_discussion,giveaway_or_reward_scam,praise_or_appreciation,question_or_information_request,user_experience_feedback
+advertisement_or_promotion,20,0,0,0,0,0,0,0,0,0,0
+complaint_or_problem_report,0,20,0,0,0,0,0,0,0,0,0
+engagement_bait,0,0,20,0,0,0,0,0,0,0,0
+feature_or_content_request,0,0,0,20,0,0,0,0,0,0,0
+financial_promotion,0,0,0,0,20,0,0,0,0,0,0
+fraudulent_service_offer,0,0,0,0,0,20,0,0,0,0,0
+general_discussion,0,0,0,0,0,0,20,0,0,0,0
+giveaway_or_reward_scam,0,0,0,0,0,0,0,20,0,0,0
+praise_or_appreciation,0,0,0,0,0,0,0,0,20,0,0
+question_or_information_request,0,0,0,0,0,0,0,0,0,20,0
+user_experience_feedback,0,0,0,0,0,0,0,0,0,0,20

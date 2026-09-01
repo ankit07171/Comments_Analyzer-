@@ -1,0 +1,13 @@
+{
+  "0": "advertisement_or_promotion",
+  "1": "complaint_or_problem_report",
+  "2": "engagement_bait",
+  "3": "feature_or_content_request",
+  "4": "financial_promotion",
+  "5": "fraudulent_service_offer",
+  "6": "general_discussion",
+  "7": "giveaway_or_reward_scam",
+  "8": "praise_or_appreciation",
+  "9": "question_or_information_request",
+  "10": "user_experience_feedback"
+}
