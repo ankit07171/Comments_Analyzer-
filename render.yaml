@@ -3,7 +3,7 @@ services:
     name: comment-intelligence-platform
     runtime: python
     pythonVersion: "3.11"
-    buildCommand: "pip install -r requirements.txt && python3 -c \"import os; os.environ['HF_HOME']='/tmp/huggingface_cache'; from transformers import AutoTokenizer, AutoModelForSequenceClassification; AutoTokenizer.from_pretrained('cardiffnlp/twitter-xlm-roberta-base-sentiment', cache_dir='/tmp/huggingface_cache', timeout=60); AutoModelForSequenceClassification.from_pretrained('cardiffnlp/twitter-xlm-roberta-base-sentiment', cache_dir='/tmp/huggingface_cache', timeout=60)\""
+    buildCommand: "bash build.sh"
     startCommand: "streamlit run dashboard.py --server.port=$PORT --server.address=0.0.0.0 --logger.level=error"
     envVars:
       - key: HF_HOME
@@ -12,3 +12,7 @@ services:
         value: /tmp/huggingface_cache
       - key: HF_HUB_ETAG_TIMEOUT
         value: "60"
+      - key: HF_HUB_DISABLE_SYMLINKS_WARNING
+        value: "1"
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"
