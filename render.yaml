@@ -7,11 +7,9 @@ services:
     startCommand: "streamlit run dashboard.py --server.port=$PORT --server.address=0.0.0.0 --logger.level=error"
     envVars:
       - key: HF_HOME
-        value: /tmp/huggingface_cache
+        value: /opt/render/project/.cache/huggingface
       - key: TRANSFORMERS_CACHE
-        value: /tmp/huggingface_cache
-      - key: HF_HUB_ETAG_TIMEOUT
-        value: "60"
+        value: /opt/render/project/.cache/huggingface
       - key: HF_HUB_DISABLE_SYMLINKS_WARNING
         value: "1"
       - key: TOKENIZERS_PARALLELISM

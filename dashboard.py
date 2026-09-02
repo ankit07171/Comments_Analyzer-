@@ -20,10 +20,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============== FIX FOR RENDER 429 ERRORS ==============
-# Set HuggingFace cache to use /tmp on Render for better performance
-os.environ['HF_HOME'] = os.environ.get('HF_HOME', '/tmp/huggingface_cache')
-os.environ['TRANSFORMERS_CACHE'] = os.environ.get('TRANSFORMERS_CACHE', '/tmp/huggingface_cache')
-os.environ['HF_HUB_ETAG_TIMEOUT'] = '60'
+# Set HuggingFace cache to use persistent storage on Render
+# This prevents re-downloading models and avoids rate limits
+if os.environ.get('RENDER'):
+    # On Render, use persistent project directory
+    cache_dir = '/opt/render/project/.cache/huggingface'
+else:
+    # Locally, use default cache
+    cache_dir = os.path.expanduser('~/.cache/huggingface')
+
+os.environ['HF_HOME'] = cache_dir
+os.environ['TRANSFORMERS_CACHE'] = cache_dir
+os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Prevent warning
 
 # ---------------- PATH SETUP ----------------

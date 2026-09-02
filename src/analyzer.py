@@ -53,9 +53,17 @@ def load_ml_models():
     try:
         print("⏳ Loading lightweight multilingual analysis models...")
         
-        # Set HuggingFace cache and offline mode for Render
-        os.environ['HF_HOME'] = '/tmp/huggingface_cache'  # Use /tmp on Render
-        os.environ['TRANSFORMERS_CACHE'] = '/tmp/huggingface_cache'
+        # Set HuggingFace cache - use persistent storage on Render
+        if os.environ.get('RENDER'):
+            cache_dir = '/opt/render/project/.cache/huggingface'
+        else:
+            cache_dir = os.path.expanduser('~/.cache/huggingface')
+        
+        os.environ['HF_HOME'] = cache_dir
+        os.environ['TRANSFORMERS_CACHE'] = cache_dir
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        print(f"   Using cache directory: {cache_dir}")
         
         # 1. Load language detection model (fastText, very lightweight)
         try:
@@ -90,12 +98,12 @@ def load_ml_models():
                 print("   Attempting to load from cache (offline mode)...")
                 _sentiment_tokenizer = AutoTokenizer.from_pretrained(
                     model_name,
-                    cache_dir='/tmp/huggingface_cache',
+                    cache_dir=cache_dir,
                     local_files_only=True  # Don't download, use cache only
                 )
                 _sentiment_model = AutoModelForSequenceClassification.from_pretrained(
                     model_name,
-                    cache_dir='/tmp/huggingface_cache',
+                    cache_dir=cache_dir,
                     local_files_only=True  # Don't download, use cache only
                 )
                 print("   ✅ Loaded from cache successfully!")
@@ -103,40 +111,9 @@ def load_ml_models():
             except Exception as cache_error:
                 # Cache miss - need to download
                 print(f"   ⚠️ Cache miss: {str(cache_error)[:100]}")
-                print("   Downloading from HuggingFace Hub (this may take a few minutes)...")
-                
-                # Try to load from cache first, with retry logic
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        _sentiment_tokenizer = AutoTokenizer.from_pretrained(
-                            model_name,
-                            cache_dir='/tmp/huggingface_cache',
-                            local_files_only=False,
-                            resume_download=True,
-                            timeout=60
-                        )
-                        _sentiment_model = AutoModelForSequenceClassification.from_pretrained(
-                            model_name,
-                            cache_dir='/tmp/huggingface_cache',
-                            local_files_only=False,
-                            resume_download=True,
-                            timeout=60
-                        )
-                        print("   ✅ Downloaded and cached successfully!")
-                        break
-                    except Exception as e:
-                        error_str = str(e)
-                        if '429' in error_str and attempt < max_retries - 1:
-                            wait_time = 2 ** (attempt + 1)  # Exponential backoff: 2s, 4s, 8s
-                            print(f"   ⚠️ Rate limited (429). Retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
-                            time.sleep(wait_time)
-                        elif attempt < max_retries - 1:
-                            wait_time = 2
-                            print(f"   ⚠️ Error: {error_str[:100]}... Retrying in {wait_time}s...")
-                            time.sleep(wait_time)
-                        else:
-                            raise
+                print("   Model not in cache - this should not happen on Render (build.sh should download it)")
+                print("   Falling back to VADER sentiment analysis...")
+                raise  # Re-raise to trigger VADER fallback
             
             # Create sentiment analysis pipeline
             sentiment_pipeline = pipeline(
