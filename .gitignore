@@ -15,3 +15,8 @@ models/models/multitask_bert/multitask_model.pt
 models/models/multitask_bert/tokenizer/
 *.pt
 *.pth
+
+# HuggingFace model cache (downloaded automatically at runtime)
+.cache/
+.huggingface/
+*.bin

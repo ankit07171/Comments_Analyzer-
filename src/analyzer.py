@@ -596,6 +596,9 @@ def analyze_comment(text: str, author: str = "Unknown", platform: str = "unknown
     norm = raw.lower().strip()
 
     result = CommentAnalysis(comment=raw, author=author or "Unknown", platform=platform)
+    
+    # Declare global variables at the top
+    global _vader
 
     # 1. Detect language
     lang = detect_language(raw)
@@ -639,7 +642,6 @@ def analyze_comment(text: str, author: str = "Unknown", platform: str = "unknown
         else:
             # Fallback to VADER for English, neutral for other languages
             if lang == 'en':
-                global _vader
                 if _vader is None:
                     from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
                     _vader = SentimentIntensityAnalyzer()
@@ -661,7 +663,6 @@ def analyze_comment(text: str, author: str = "Unknown", platform: str = "unknown
     else:
         # Fallback to VADER for English
         if lang == 'en':
-            global _vader
             if _vader is None:
                 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
                 _vader = SentimentIntensityAnalyzer()
