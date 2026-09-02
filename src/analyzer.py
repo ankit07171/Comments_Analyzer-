@@ -53,6 +53,10 @@ def load_ml_models():
     try:
         print("⏳ Loading lightweight multilingual analysis models...")
         
+        # Set HuggingFace cache and offline mode for Render
+        os.environ['HF_HOME'] = '/tmp/huggingface_cache'  # Use /tmp on Render
+        os.environ['TRANSFORMERS_CACHE'] = '/tmp/huggingface_cache'
+        
         # 1. Load language detection model (fastText, very lightweight)
         try:
             import fasttext
@@ -69,20 +73,43 @@ def load_ml_models():
         except Exception as e:
             print(f"⚠️ Could not load language detector: {e}")
         
-        # 2. Load sentiment analysis model
+        # 2. Load sentiment analysis model with retry logic
         try:
             from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
+            import time
             
             # Using a smaller model for faster inference
             # cardiffnlp/twitter-xlm-roberta-base-sentiment is multilingual and good for social media
             model_name = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
             
             print(f"⏳ Loading multilingual sentiment model: {model_name}")
-            _sentiment_tokenizer = AutoTokenizer.from_pretrained(model_name)
-            _sentiment_model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            
+            # Try to load from cache first, with retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    _sentiment_tokenizer = AutoTokenizer.from_pretrained(
+                        model_name,
+                        cache_dir='/tmp/huggingface_cache',
+                        local_files_only=False,
+                        timeout=30
+                    )
+                    _sentiment_model = AutoModelForSequenceClassification.from_pretrained(
+                        model_name,
+                        cache_dir='/tmp/huggingface_cache',
+                        local_files_only=False,
+                        timeout=30
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                        print(f"⚠️ Attempt {attempt + 1} failed: {str(e)[:100]}... Retrying in {wait_time}s...")
+                        time.sleep(wait_time)
+                    else:
+                        raise
             
             # Create sentiment analysis pipeline
-            from transformers import TextClassificationPipeline
             sentiment_pipeline = pipeline(
                 "sentiment-analysis",
                 model=_sentiment_model,
@@ -93,7 +120,7 @@ def load_ml_models():
             )
             
             USING_ML_MODEL = True
-            MODEL_VERSION = f"multilingual-xlm-roberta-sentiment ({model_name})"
+            MODEL_VERSION = f"multilingual-xlm-roberta-sentiment"
             print("✅ Multilingual sentiment model loaded successfully")
             
         except ImportError as e:
@@ -158,7 +185,7 @@ def detect_language(text: str) -> str:
 
 def analyze_sentiment_multilingual(text: str, lang: str = 'en'):
     """
-    Analyze sentiment using multilingual model.
+    Analyze sentiment using multilingual model with rate limit handling.
     Returns: (sentiment_label, confidence)
     """
     if not USING_ML_MODEL or _sentiment_model is None:
@@ -166,6 +193,7 @@ def analyze_sentiment_multilingual(text: str, lang: str = 'en'):
     
     try:
         from transformers import pipeline
+        import time
         
         # Create sentiment analysis pipeline if not already created
         sentiment_pipeline = pipeline(
@@ -177,20 +205,33 @@ def analyze_sentiment_multilingual(text: str, lang: str = 'en'):
             max_length=512
         )
         
-        # Analyze sentiment
-        result = sentiment_pipeline(text[:1000])[0]  # Limit text length
-        
-        # Map model output to our standard labels
-        label = result['label'].lower()
-        confidence = result['score']
-        
-        # Standardize labels
-        if 'positive' in label or 'pos' in label:
-            return 'Positive', confidence
-        elif 'negative' in label or 'neg' in label:
-            return 'Negative', confidence
-        else:
-            return 'Neutral', confidence
+        # Retry logic for rate limiting
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Analyze sentiment with timeout
+                result = sentiment_pipeline(text[:1000])[0]  # Limit text length
+                
+                # Map model output to our standard labels
+                label = result['label'].lower()
+                confidence = result['score']
+                
+                # Standardize labels
+                if 'positive' in label or 'pos' in label:
+                    return 'Positive', confidence
+                elif 'negative' in label or 'neg' in label:
+                    return 'Negative', confidence
+                else:
+                    return 'Neutral', confidence
+                    
+            except Exception as e:
+                if '429' in str(e) and attempt < max_retries - 1:
+                    # Rate limited - wait and retry
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    print(f"⚠️ Rate limited (429). Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    raise
             
     except Exception as e:
         print(f"⚠️ Multilingual sentiment analysis failed: {e}")

@@ -8,6 +8,7 @@ import json
 import io
 import hashlib
 import warnings
+import time
 
 # Suppress Windows asyncio warnings (harmless but noisy)
 if sys.platform == 'win32':
@@ -17,6 +18,13 @@ if sys.platform == 'win32':
 
 from dotenv import load_dotenv
 load_dotenv()
+
+# ============== FIX FOR RENDER 429 ERRORS ==============
+# Set HuggingFace cache to use /tmp on Render for better performance
+os.environ['HF_HOME'] = os.environ.get('HF_HOME', '/tmp/huggingface_cache')
+os.environ['TRANSFORMERS_CACHE'] = os.environ.get('TRANSFORMERS_CACHE', '/tmp/huggingface_cache')
+os.environ['HF_HUB_ETAG_TIMEOUT'] = '60'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Prevent warning
 
 # ---------------- PATH SETUP ----------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
