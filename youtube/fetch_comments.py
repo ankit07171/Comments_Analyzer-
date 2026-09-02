@@ -76,6 +76,9 @@ def fetch_youtube_comments(video_input):
     next_page = None
 
     print("Fetching comments...", file=sys.stderr)
+    max_retries = 3
+    retry_count = 0
+    
     while True:
         params = {
             "part": "snippet",
@@ -85,25 +88,66 @@ def fetch_youtube_comments(video_input):
             "order": "relevance",
             "key": API_KEY,
         }
-        response = requests.get(url, params=params, timeout=15)
+        
+        try:
+            response = requests.get(url, params=params, timeout=15)
 
-        if response.status_code != 200:
-            print(f"ERROR: YouTube API failed ({response.status_code})", file=sys.stderr)
+            if response.status_code == 429:
+                # Rate limited
+                if retry_count < max_retries:
+                    wait_time = 2 ** retry_count  # Exponential backoff: 1s, 2s, 4s
+                    print(f"⚠️ Rate limited (429). Waiting {wait_time}s before retry {retry_count + 1}/{max_retries}...", file=sys.stderr)
+                    time.sleep(wait_time)
+                    retry_count += 1
+                    continue
+                else:
+                    print(f"ERROR: YouTube API rate limit exceeded after {max_retries} retries. Try again later.", file=sys.stderr)
+                    print(f"Quota Info: YouTube API has daily quota of 10,000 units. Each comment fetch uses ~100 units.", file=sys.stderr)
+                    sys.exit(1)
+
+            if response.status_code == 403:
+                error_msg = response.json().get("error", {}).get("message", "Unknown error")
+                print(f"ERROR: YouTube API access forbidden (403): {error_msg}", file=sys.stderr)
+                print("Check your API key or quota limits at: https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas", file=sys.stderr)
+                sys.exit(1)
+
+            if response.status_code != 200:
+                print(f"ERROR: YouTube API failed ({response.status_code}): {response.text[:200]}", file=sys.stderr)
+                sys.exit(1)
+
+            # Success - reset retry counter
+            retry_count = 0
+
+            data = response.json()
+            for item in data.get("items", []):
+                top = item["snippet"]["topLevelComment"]["snippet"]
+                comments_data.append({
+                    "comment": top.get("textDisplay", ""),
+                    "author": top.get("authorDisplayName", "Unknown"),
+                    "like_count": top.get("likeCount", 0),
+                    "published_at": top.get("publishedAt", ""),
+                })
+
+            next_page = data.get("nextPageToken")
+            if not next_page or len(comments_data) >= 1000:
+                break
+                
+            # Rate limiting: small delay between pages to avoid hitting limits
+            time.sleep(0.5)
+            
+        except requests.exceptions.Timeout:
+            print("⚠️ Request timeout. Retrying...", file=sys.stderr)
+            if retry_count < max_retries:
+                retry_count += 1
+                time.sleep(2)
+                continue
+            else:
+                print("ERROR: Max retries exceeded due to timeouts", file=sys.stderr)
+                sys.exit(1)
+                
+        except Exception as e:
+            print(f"ERROR: Unexpected error fetching comments: {e}", file=sys.stderr)
             sys.exit(1)
-
-        data = response.json()
-        for item in data.get("items", []):
-            top = item["snippet"]["topLevelComment"]["snippet"]
-            comments_data.append({
-                "comment": top.get("textDisplay", ""),
-                "author": top.get("authorDisplayName", "Unknown"),
-                "like_count": top.get("likeCount", 0),
-                "published_at": top.get("publishedAt", ""),
-            })
-
-        next_page = data.get("nextPageToken")
-        if not next_page or len(comments_data) >= 1000:
-            break
 
     if not comments_data:
         print("ERROR: No comments found (comments may be disabled)", file=sys.stderr)
@@ -119,7 +163,7 @@ def fetch_youtube_comments(video_input):
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump({"metadata": metadata, "ai_summary": None}, f, indent=2, ensure_ascii=False)
 
-    print(f"Fetched {len(df)} comments for '{metadata.get('title', video_id)}'", file=sys.stderr)
+    print(f"✅ Fetched {len(df)} comments for '{metadata.get('title', video_id)}'", file=sys.stderr)
     print(csv_path)  # REQUIRED stdout contract
 
 
